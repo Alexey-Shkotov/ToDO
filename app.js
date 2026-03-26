@@ -173,17 +173,23 @@ function formatDateTime(iso) {
 }
 
 // ─── PERSISTENCE ─────────────────────────────────────────
-function loadState() {
+// Uses Electron's persistent store (saved to %APPDATA%/witcher-journal/config.json)
+// Falls back to localStorage when running outside Electron (plain browser)
+const storage = window.electronStore || {
+    getItem:    (k) => Promise.resolve(localStorage.getItem(k)),
+    setItem:    (k, v) => Promise.resolve(localStorage.setItem(k, v)),
+    removeItem: (k) => Promise.resolve(localStorage.removeItem(k)),
+};
+
+async function loadState() {
     try {
-        const raw = localStorage.getItem('witcherJournal_v2');
+        const raw = await storage.getItem('witcherJournal_v2');
         if (raw) state = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), JSON.parse(raw));
     } catch (_) { /* start fresh */ }
 }
 
 function saveState() {
-    try {
-        localStorage.setItem('witcherJournal_v2', JSON.stringify(state));
-    } catch (_) { /* ignore */ }
+    storage.setItem('witcherJournal_v2', JSON.stringify(state)).catch(() => {});
 }
 
 // ─── DAILY SYSTEMS ───────────────────────────────────────
@@ -604,8 +610,8 @@ function bindEvents() {
 }
 
 // ─── INIT ────────────────────────────────────────────────
-function init() {
-    loadState();
+async function init() {
+    await loadState();
     checkStreak();
     refreshDailyValues();
     renderAll();
