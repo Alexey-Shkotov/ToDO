@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Witcher's Journal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Cinzel+Decorative:wght@400;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="noise-overlay"></div>
+
+    <!-- HEADER -->
+    <header class="site-header">
+        <div class="header-inner">
+            <div class="header-deco left">
+                <span class="deco-line"></span>
+                <span class="deco-diamond">◆</span>
+            </div>
+            <div class="header-brand">
+                <div class="header-sub">The Witcher's</div>
+                <h1 class="header-title">JOURNAL</h1>
+                <div class="header-tagline">Notice Board &amp; Task Ledger</div>
+            </div>
+            <div class="header-deco right">
+                <span class="deco-diamond">◆</span>
+                <span class="deco-line"></span>
+            </div>
+        </div>
+        <div class="weather-strip">
+            <span id="weatherEmoji">⛅</span>
+            <span id="weatherDesc">Reading the skies of the Continent...</span>
+        </div>
+    </header>
+
+    <!-- MAIN LAYOUT -->
+    <div class="main-container">
+
+        <!-- CHARACTER PANEL -->
+        <aside class="char-panel">
+            <div class="panel-frame">
+                <div class="panel-title-bar">
+                    <span class="corner-deco">⌐</span>
+                    <span>CHARACTER</span>
+                    <span class="corner-deco">¬</span>
+                </div>
+
+                <div class="medallion-wrap">
+                    <div class="medallion" id="medallion">
+                        <div class="med-inner">
+                            <span class="med-level" id="medLevel">1</span>
+                        </div>
+                        <div class="med-ring"></div>
+                    </div>
+                    <div class="char-name" id="charName" title="Double-click to rename" ondblclick="editName()">Witcher</div>
+                    <div class="char-rank" id="charRank">Apprentice</div>
+                </div>
+
+                <div class="xp-block">
+                    <div class="xp-header">
+                        <span class="xp-label">EXPERIENCE</span>
+                        <span class="xp-nums" id="xpNums">0 / 100</span>
+                    </div>
+                    <div class="xp-track">
+                        <div class="xp-fill" id="xpFill" style="width:0%"></div>
+                        <div class="xp-shine"></div>
+                    </div>
+                </div>
+
+                <div class="divider-ornament">⸻ ◆ ⸻</div>
+
+                <div class="stats-block">
+                    <div class="stat-item">
+                        <span class="stat-ico">⚔</span>
+                        <span class="stat-lbl">Tasks Slain</span>
+                        <span class="stat-val" id="sTasksSlain">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-ico">📜</span>
+                        <span class="stat-lbl">Contracts</span>
+                        <span class="stat-val" id="sContracts">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-ico">🗡</span>
+                        <span class="stat-lbl">Quests</span>
+                        <span class="stat-val" id="sQuests">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-ico">🔥</span>
+                        <span class="stat-lbl">Day Streak</span>
+                        <span class="stat-val" id="sStreak">0</span>
+                    </div>
+                    <div class="stat-item highlight">
+                        <span class="stat-ico">✨</span>
+                        <span class="stat-lbl">Total XP Earned</span>
+                        <span class="stat-val" id="sTotalXP">0</span>
+                    </div>
+                </div>
+
+                <div class="divider-ornament">⸻ ◆ ⸻</div>
+
+                <div class="daily-bounty">
+                    <div class="bounty-header">⚜ DAILY BOUNTY ⚜</div>
+                    <div class="bounty-desc" id="bountyDesc">Loading today's bounty...</div>
+                    <div class="bounty-bonus" id="bountyBonus"></div>
+                </div>
+
+                <div class="divider-ornament">⸻ ◆ ⸻</div>
+
+                <div class="trophies-block">
+                    <div class="trophies-header">TROPHIES</div>
+                    <div class="trophies-grid" id="trophiesGrid"></div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- TASK BOARD -->
+        <main class="task-board">
+
+            <!-- Post form -->
+            <div class="board-section">
+                <div class="section-header">
+                    <span class="section-deco">◆</span>
+                    POST A NOTICE
+                    <span class="section-deco">◆</span>
+                </div>
+                <div class="post-form">
+                    <input type="text" id="taskTitle" class="form-input" placeholder="Describe your task..." maxlength="100" />
+                    <textarea id="taskNotes" class="form-textarea" placeholder="Additional notes... (optional)" maxlength="300" rows="2"></textarea>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label class="field-label">TYPE</label>
+                            <select id="taskType" class="form-select">
+                                <option value="errand">Errand — 25 XP</option>
+                                <option value="quest" selected>Quest — 50 XP</option>
+                                <option value="contract">Contract — 100 XP</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">DUE DATE</label>
+                            <input type="date" id="taskDue" class="form-input form-date" />
+                        </div>
+                        <button class="btn-post" id="btnPost">⚔ POST CONTRACT</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="filters-bar">
+                <div class="filter-group" id="statusFilters">
+                    <button class="flt active" data-status="active">Active</button>
+                    <button class="flt" data-status="all">All</button>
+                    <button class="flt" data-status="completed">Completed</button>
+                </div>
+                <div class="filter-sep"></div>
+                <div class="filter-group" id="typeFilters">
+                    <button class="flt active" data-type="all">All Types</button>
+                    <button class="flt" data-type="contract">Contracts</button>
+                    <button class="flt" data-type="quest">Quests</button>
+                    <button class="flt" data-type="errand">Errands</button>
+                </div>
+            </div>
+
+            <!-- Task list -->
+            <div class="tasks-container" id="tasksContainer">
+                <div class="empty-board" id="emptyBoard">
+                    <div class="empty-icon">⚔</div>
+                    <div class="empty-msg">The notice board awaits.</div>
+                    <div class="empty-hint">Post your first contract above.</div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- LEVEL UP MODAL -->
+    <div class="overlay" id="levelUpOverlay" hidden>
+        <div class="modal level-up-modal">
+            <div class="modal-rune">ᚢ</div>
+            <div class="modal-subtitle">LEVEL ACHIEVED</div>
+            <div class="modal-level-num" id="luLevel">2</div>
+            <div class="modal-rank-name" id="luRank">Trial Survivor</div>
+            <div class="modal-hr">⸻ ◆ ⸻</div>
+            <div class="modal-flavor" id="luFlavor">"Every contract completed makes a Witcher stronger."</div>
+            <button class="modal-btn" id="luClose">Continue the Hunt ⚔</button>
+        </div>
+    </div>
+
+    <!-- ACHIEVEMENT MODAL -->
+    <div class="overlay" id="achievOverlay" hidden>
+        <div class="modal achiev-modal">
+            <div class="modal-subtitle">TROPHY EARNED</div>
+            <div class="achiev-icon" id="achIcon">🏆</div>
+            <div class="achiev-name" id="achName">Achievement</div>
+            <div class="achiev-desc" id="achDesc">Description here.</div>
+            <button class="modal-btn" id="achClose">Claim Trophy ⚜</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
