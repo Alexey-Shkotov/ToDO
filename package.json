@@ -4,15 +4,9 @@
   "description": "Minimalist ToDo Planner — Desktop App",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "rebuild": "electron-rebuild",
-    "postinstall": "electron-rebuild"
-  },
-  "dependencies": {
-    "better-sqlite3": "^9.4.3"
+    "start": "electron ."
   },
   "devDependencies": {
-    "electron": "^30.0.0",
-    "@electron/rebuild": "^3.6.0"
+    "electron": "^30.0.0"
   }
 }
