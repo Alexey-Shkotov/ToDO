@@ -1,26 +1,18 @@
 /* ============================================================
-   ToDo Planner — App Logic
+   ToDo Planner — Renderer Process (app.js)
+   State lives in memory; every mutation syncs to SQLite via IPC.
    ============================================================ */
 
-// ─── STORAGE KEY ─────────────────────────────────────────
-const STORAGE_KEY = 'todoplanner_v2';
-
-// ─── DEFAULT STATE ────────────────────────────────────────
-const DEFAULT_STATE = {
-    tasks: [],
-    player: { level: 1, xp: 0, totalXp: 0 },
-    settings: {
-        names: ['босс', 'Алексей Олегович'],
-        clockStyle: 'classic',
-    },
-    calView: null,
+// ─── IN-MEMORY STATE ──────────────────────────────────────
+let state = {
+    tasks:    [],
+    player:   { level: 1, xp: 0, totalXp: 0 },
+    settings: { names: ['босс', 'Алексей Олегович'], clockStyle: 'classic' },
+    calView:  null,
 };
-
-let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
 
 // ─── XP CONFIG ────────────────────────────────────────────
 const XP_VALUES = { low: 25, medium: 50, high: 100 };
-
 function xpForLevel(lvl) { return 100 + (lvl - 1) * 50; }
 
 // ─── GREETINGS ────────────────────────────────────────────
@@ -56,33 +48,51 @@ const GREETINGS = {
 };
 
 function pickGreeting() {
-    const h = new Date().getHours();
+    const h      = new Date().getHours();
     const period = h >= 5 && h < 12 ? 'morning'
-        : h >= 12 && h < 17 ? 'afternoon'
-        : h >= 17 && h < 22 ? 'evening'
-        : 'night';
-    const msgs = GREETINGS[period];
-    const msg  = msgs[Math.floor(Math.random() * msgs.length)];
-    const names = state.settings.names;
-    const name  = names.length ? names[Math.floor(Math.random() * names.length)] : 'друг';
+                 : h >= 12 && h < 17 ? 'afternoon'
+                 : h >= 17 && h < 22 ? 'evening'
+                 : 'night';
+    const msgs   = GREETINGS[period];
+    const msg    = msgs[Math.floor(Math.random() * msgs.length)];
+    const names  = state.settings.names;
+    const name   = names.length ? names[Math.floor(Math.random() * names.length)] : 'друг';
     return msg.replace('{n}', name);
 }
 
-// ─── PERSISTENCE ──────────────────────────────────────────
-function loadState() {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-            const saved = JSON.parse(raw);
-            state = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), saved);
-        }
-    } catch (_) {}
+// ─── DB LOAD ──────────────────────────────────────────────
+// Converts DB snake_case row → JS camelCase task object
+function normalizeTask(row) {
+    return {
+        id:          row.id,
+        title:       row.title,
+        notes:       row.notes  || '',
+        priority:    row.priority,
+        due:         row.due    || null,
+        completed:   row.completed === 1,
+        createdAt:   row.created_at,
+        completedAt: row.completed_at || null,
+        xpReward:    row.xp_reward,
+    };
 }
 
-function saveState() {
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (_) {}
+async function loadState() {
+    const [tasks, player, settings] = await Promise.all([
+        window.api.getTasks(),
+        window.api.getPlayer(),
+        window.api.getAllSettings(),
+    ]);
+
+    state.tasks  = tasks.map(normalizeTask);
+    state.player = {
+        level:   player.level,
+        xp:      player.xp,
+        totalXp: player.total_xp,
+    };
+    state.settings = {
+        names:      Array.isArray(settings.names)      ? settings.names      : ['босс', 'Алексей Олегович'],
+        clockStyle: typeof settings.clockStyle === 'string' ? settings.clockStyle : 'classic',
+    };
 }
 
 // ─── DATE HELPERS ─────────────────────────────────────────
@@ -139,7 +149,6 @@ function renderCalendar() {
     const grid = document.getElementById('calGrid');
     grid.innerHTML = '';
 
-    // Day-of-week headers (Mon = 0)
     DOW_SHORT.forEach(d => {
         const el = document.createElement('div');
         el.className = 'cal-dow';
@@ -147,39 +156,32 @@ function renderCalendar() {
         grid.appendChild(el);
     });
 
-    // First weekday of month (convert Sun=0 → Mon=0)
-    const firstWd = (new Date(year, month, 1).getDay() + 6) % 7;
+    const firstWd   = (new Date(year, month, 1).getDay() + 6) % 7;
     const totalDays = new Date(year, month + 1, 0).getDate();
     const prevTotal = new Date(year, month, 0).getDate();
 
-    // Prev month tail
-    for (let i = firstWd - 1; i >= 0; i--) {
+    for (let i = firstWd - 1; i >= 0; i--)
         appendCalDay(grid, prevTotal - i, isoDate(year, month - 1, prevTotal - i), true, t);
-    }
 
-    // Current month
-    for (let d = 1; d <= totalDays; d++) {
+    for (let d = 1; d <= totalDays; d++)
         appendCalDay(grid, d, isoDate(year, month, d), false, t);
-    }
 
-    // Next month head
-    const filled = firstWd + totalDays;
+    const filled   = firstWd + totalDays;
     const trailing = (7 - (filled % 7)) % 7;
-    for (let d = 1; d <= trailing; d++) {
+    for (let d = 1; d <= trailing; d++)
         appendCalDay(grid, d, isoDate(year, month + 1, d), true, t);
-    }
 }
 
 function appendCalDay(grid, dayNum, dateStr, otherMonth, t) {
     const cell = document.createElement('div');
     cell.className = 'cal-day'
-        + (otherMonth   ? ' other-month' : '')
-        + (dateStr === t ? ' today'       : '')
+        + (otherMonth            ? ' other-month' : '')
+        + (dateStr === t         ? ' today'        : '')
         + (dateStr === selectedDate && dateStr !== t ? ' selected' : '');
     cell.dataset.date = dateStr;
 
     const numEl = document.createElement('div');
-    numEl.className = 'cal-day-num';
+    numEl.className  = 'cal-day-num';
     numEl.textContent = dayNum;
     cell.appendChild(numEl);
 
@@ -187,14 +189,14 @@ function appendCalDay(grid, dayNum, dateStr, otherMonth, t) {
     const MAX = 2;
     dayTasks.slice(0, MAX).forEach(tk => {
         const chip = document.createElement('div');
-        chip.className = 'cal-chip ' + tk.priority + (tk.completed ? ' done' : '');
+        chip.className  = 'cal-chip ' + tk.priority + (tk.completed ? ' done' : '');
         chip.textContent = tk.title;
         chip.dataset.tid = tk.id;
         cell.appendChild(chip);
     });
     if (dayTasks.length > MAX) {
         const more = document.createElement('div');
-        more.className = 'cal-more';
+        more.className  = 'cal-more';
         more.textContent = `+${dayTasks.length - MAX} ещё`;
         cell.appendChild(more);
     }
@@ -204,17 +206,15 @@ function appendCalDay(grid, dayNum, dateStr, otherMonth, t) {
 
 // ─── TODAY PANEL ──────────────────────────────────────────
 function renderToday() {
-    const t = todayStr();
+    const t      = todayStr();
     const [y, m, d] = t.split('-');
     document.getElementById('todayDate').textContent =
         `${parseInt(d)} ${MONTHS_RU_GEN[parseInt(m) - 1]} ${y}`;
 
-    // Tasks for today: due === today OR no date and not completed
     const tasks = state.tasks.filter(tk =>
         tk.due === t || (!tk.due && !tk.completed)
     );
 
-    // Sort: incomplete first, then high→low priority
     const pOrd = { high: 0, medium: 1, low: 2 };
     tasks.sort((a, b) => {
         if (a.completed !== b.completed) return a.completed ? 1 : -1;
@@ -223,7 +223,7 @@ function renderToday() {
 
     const incomplete = tasks.filter(t => !t.completed).length;
     const countEl = document.getElementById('todayCount');
-    countEl.textContent = incomplete > 0 ? incomplete : '';
+    countEl.textContent   = incomplete > 0 ? incomplete : '';
     countEl.style.display = incomplete > 0 ? '' : 'none';
 
     const container = document.getElementById('todayTasks');
@@ -240,46 +240,55 @@ function renderToday() {
 
     tasks.forEach(tk => {
         const card = document.createElement('div');
-        card.className = `today-card ${tk.priority}${tk.completed ? ' done' : ''}`;
+        card.className  = `today-card ${tk.priority}${tk.completed ? ' done' : ''}`;
         card.dataset.id = tk.id;
 
         card.innerHTML = `
-            <button class="task-cb" data-id="${tk.id}" title="${tk.completed ? 'Выполнено' : 'Отметить'}">${tk.completed ? '✓' : ''}</button>
+            <button class="task-cb" data-id="${tk.id}">${tk.completed ? '✓' : ''}</button>
             <div class="task-info">
                 <div class="task-title-txt">${escHtml(tk.title)}</div>
                 ${tk.notes ? `<div class="task-notes-txt">${escHtml(tk.notes)}</div>` : ''}
             </div>
             <span class="task-xp-badge">+${tk.xpReward} XP</span>
-            <button class="task-del-btn" data-id="${tk.id}" title="Удалить">✕</button>
+            <button class="task-del-btn" data-id="${tk.id}">✕</button>
         `;
 
         container.appendChild(card);
     });
 }
 
-// ─── XP & LEVEL ───────────────────────────────────────────
+// ─── XP BAR ───────────────────────────────────────────────
 function updateXpBar() {
     const { level, xp } = state.player;
     const max = xpForLevel(level);
     const pct = Math.min(100, (xp / max) * 100);
-    document.getElementById('xpFill').style.width = pct + '%';
-    document.getElementById('xpLevel').textContent = level;
+    document.getElementById('xpFill').style.width    = pct + '%';
+    document.getElementById('xpLevel').textContent   = level;
     document.getElementById('xpNumbers').textContent = `${xp} / ${max} XP`;
 }
 
-function gainXp(amount) {
+async function gainXp(amount) {
     state.player.xp     += amount;
     state.player.totalXp += amount;
+
     const max = xpForLevel(state.player.level);
+    let leveledUp = false;
     if (state.player.xp >= max) {
         state.player.xp -= max;
         state.player.level++;
-        saveState();
-        updateXpBar();
+        leveledUp = true;
+    }
+
+    await window.api.updatePlayer({
+        level:    state.player.level,
+        xp:       state.player.xp,
+        total_xp: state.player.totalXp,
+    });
+
+    updateXpBar();
+
+    if (leveledUp) {
         setTimeout(() => showLevelUp(state.player.level), 400);
-    } else {
-        saveState();
-        updateXpBar();
     }
 }
 
@@ -301,7 +310,6 @@ class Particle {
         this.x  = sx; this.y  = sy;
         this.tx = tx; this.ty = ty;
 
-        // Initial burst offset
         const ang  = Math.random() * Math.PI * 2;
         const dist = 18 + Math.random() * 25;
         this.bx = sx + Math.cos(ang) * dist;
@@ -311,13 +319,12 @@ class Particle {
         this.alpha  = 1;
         this.rot    = Math.random() * Math.PI * 2;
         this.rotSpd = (Math.random() - 0.5) * 0.18;
-        this.phase  = 'burst'; // burst → fly
+        this.phase  = 'burst';
         this.prog   = 0;
         this.spd    = 0.025 + Math.random() * 0.025;
         this.color  = Math.random() > 0.45 ? '#e8420a'
                     : Math.random() > 0.5  ? '#ff7043'
                     : '#ffa07a';
-        // shape: star4 | diamond | dot
         this.shape  = Math.random() > 0.45 ? 'star4'
                     : Math.random() > 0.5  ? 'diamond'
                     : 'dot';
@@ -347,11 +354,9 @@ class Particle {
         ctx.translate(this.x, this.y);
         ctx.rotate(this.rot);
 
-        if (this.shape === 'star4') {
-            drawStar4(this.size * 0.5);
-        } else if (this.shape === 'diamond') {
-            drawDiamond(this.size * 0.45);
-        } else {
+        if      (this.shape === 'star4')   drawStar4(this.size * 0.5);
+        else if (this.shape === 'diamond') drawDiamond(this.size * 0.45);
+        else {
             ctx.beginPath();
             ctx.arc(0, 0, this.size * 0.28, 0, Math.PI * 2);
             ctx.fill();
@@ -407,11 +412,7 @@ function loopParticles() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     particles = particles.filter(p => !p.isDead());
     particles.forEach(p => { p.update(); p.draw(); });
-    if (particles.length > 0) {
-        rafId = requestAnimationFrame(loopParticles);
-    } else {
-        rafId = null;
-    }
+    rafId = particles.length > 0 ? requestAnimationFrame(loopParticles) : null;
 }
 
 // ─── TASK CRUD ────────────────────────────────────────────
@@ -420,11 +421,11 @@ let editTaskId = null;
 function openTaskModal(date) {
     editTaskId = null;
     document.getElementById('taskModalTitle').textContent = 'Новая задача';
-    document.getElementById('taskTitleInput').value    = '';
-    document.getElementById('taskNotesInput').value    = '';
-    document.getElementById('taskDateInput').value     = date || todayStr();
-    document.getElementById('taskPriorityInput').value = 'medium';
-    document.getElementById('saveTaskBtn').textContent = 'Добавить';
+    document.getElementById('taskTitleInput').value       = '';
+    document.getElementById('taskNotesInput').value       = '';
+    document.getElementById('taskDateInput').value        = date || todayStr();
+    document.getElementById('taskPriorityInput').value    = 'medium';
+    document.getElementById('saveTaskBtn').textContent    = 'Добавить';
     document.getElementById('taskModal').hidden = false;
     setTimeout(() => document.getElementById('taskTitleInput').focus(), 60);
 }
@@ -433,7 +434,7 @@ function closeTaskModal() {
     document.getElementById('taskModal').hidden = true;
 }
 
-function saveTask() {
+async function saveTask() {
     const titleEl = document.getElementById('taskTitleInput');
     const title   = titleEl.value.trim();
 
@@ -444,35 +445,52 @@ function saveTask() {
         return;
     }
 
-    const due      = document.getElementById('taskDateInput').value || null;
+    const due      = document.getElementById('taskDateInput').value     || null;
     const priority = document.getElementById('taskPriorityInput').value;
     const notes    = document.getElementById('taskNotesInput').value.trim();
 
     if (editTaskId) {
         const tk = state.tasks.find(t => t.id === editTaskId);
-        if (tk) { tk.title = title; tk.due = due; tk.priority = priority; tk.notes = notes; }
+        if (tk) {
+            Object.assign(tk, { title, due, priority, notes, xpReward: XP_VALUES[priority] });
+            await window.api.updateTask(editTaskId, {
+                title, notes, priority,
+                due:       due || null,
+                xp_reward: XP_VALUES[priority],
+            });
+        }
     } else {
-        state.tasks.unshift({
-            id: Date.now(),
+        const now  = new Date().toISOString();
+        const task = {
+            id:          Date.now(),
             title, notes, priority, due,
-            completed: false,
-            createdAt: new Date().toISOString(),
+            completed:   false,
+            createdAt:   now,
             completedAt: null,
-            xpReward: XP_VALUES[priority],
+            xpReward:    XP_VALUES[priority],
+        };
+        state.tasks.unshift(task);
+        await window.api.addTask({
+            id:           task.id,
+            title, notes, priority,
+            due:          due || null,
+            completed:    0,
+            created_at:   now,
+            completed_at: null,
+            xp_reward:    task.xpReward,
         });
     }
 
-    saveState();
     closeTaskModal();
     renderCalendar();
     renderToday();
 }
 
-function completeTask(id) {
+async function completeTask(id) {
     const tk = state.tasks.find(t => t.id === id);
     if (!tk || tk.completed) return;
 
-    // Capture source position BEFORE re-render
+    // Capture position BEFORE DOM re-render
     const cardEl = document.querySelector(`.today-card[data-id="${id}"]`);
     let sx = window.innerWidth / 2, sy = window.innerHeight / 2;
     if (cardEl) {
@@ -482,23 +500,22 @@ function completeTask(id) {
         sy = r.top  + r.height / 2;
     }
 
+    const completedAt = new Date().toISOString();
     tk.completed   = true;
-    tk.completedAt = new Date().toISOString();
-    saveState();
+    tk.completedAt = completedAt;
+
+    await window.api.updateTask(id, { completed: 1, completed_at: completedAt });
 
     renderToday();
     renderCalendar();
 
-    // Fire particles
     spawnParticles(sx, sy);
-
-    // Gain XP after slight delay (so bar animates in after particles)
     setTimeout(() => gainXp(tk.xpReward), 550);
 }
 
-function deleteTask(id) {
+async function deleteTask(id) {
     state.tasks = state.tasks.filter(t => t.id !== id);
-    saveState();
+    await window.api.deleteTask(id);
     renderCalendar();
     renderToday();
 }
@@ -515,7 +532,7 @@ const LEVEL_FLAVORS = [
 ];
 
 function showLevelUp(level) {
-    document.getElementById('luNum').textContent   = level;
+    document.getElementById('luNum').textContent    = level;
     document.getElementById('luFlavor').textContent = LEVEL_FLAVORS[(level - 2) % LEVEL_FLAVORS.length];
     document.getElementById('levelUpModal').hidden  = false;
 }
@@ -537,17 +554,19 @@ function renderNames() {
         const chip = document.createElement('div');
         chip.className = 'name-chip';
         chip.innerHTML = `<span>${escHtml(name)}</span>
-            <button class="name-chip-rm" data-i="${i}" title="Удалить">✕</button>`;
+            <button class="name-chip-rm" data-i="${i}">✕</button>`;
         list.appendChild(chip);
     });
 }
 
-function addName() {
+async function addName() {
     const inp  = document.getElementById('newNameInput');
     const name = inp.value.trim();
     if (!name || state.settings.names.includes(name)) { inp.focus(); return; }
+
     state.settings.names.push(name);
-    saveState();
+    await window.api.setSetting('names', state.settings.names);
+
     renderNames();
     currentGreeting = '';
     refreshGreeting();
@@ -555,9 +574,10 @@ function addName() {
     inp.focus();
 }
 
-function removeName(i) {
+async function removeName(i) {
     state.settings.names.splice(i, 1);
-    saveState();
+    await window.api.setSetting('names', state.settings.names);
+
     renderNames();
     currentGreeting = '';
     refreshGreeting();
@@ -575,36 +595,33 @@ function toggleFullscreen() {
 // ─── EVENT BINDING ────────────────────────────────────────
 function bindEvents() {
 
-    // Clock style
-    document.getElementById('clockToggle').addEventListener('click', () => {
+    // Clock style toggle
+    document.getElementById('clockToggle').addEventListener('click', async () => {
         state.settings.clockStyle = state.settings.clockStyle === 'classic' ? 'glow' : 'classic';
-        saveState();
+        await window.api.setSetting('clockStyle', state.settings.clockStyle);
         applyClockStyle();
     });
 
     // Fullscreen
     document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
 
-    // Settings open/close
+    // Settings
     document.getElementById('settingsBtn').addEventListener('click', openSettings);
     document.getElementById('closeSettings').addEventListener('click', closeSettings);
     document.getElementById('settingsModal').addEventListener('click', e => {
         if (e.target === e.currentTarget) closeSettings();
     });
 
-    // Add name
     document.getElementById('addNameBtn').addEventListener('click', addName);
     document.getElementById('newNameInput').addEventListener('keydown', e => {
         if (e.key === 'Enter') addName();
     });
-
-    // Remove name (delegated)
     document.getElementById('namesList').addEventListener('click', e => {
         const btn = e.target.closest('.name-chip-rm');
         if (btn) removeName(parseInt(btn.dataset.i));
     });
 
-    // Calendar nav
+    // Calendar navigation
     document.getElementById('calPrev').addEventListener('click', () => {
         let { year, month } = state.calView;
         if (--month < 0) { month = 11; year--; }
@@ -619,9 +636,8 @@ function bindEvents() {
         renderCalendar();
     });
 
-    // Calendar grid click (delegated)
+    // Calendar grid click
     document.getElementById('calGrid').addEventListener('click', e => {
-        // Click on task chip → complete/toggle
         const chip = e.target.closest('.cal-chip');
         if (chip) {
             e.stopPropagation();
@@ -630,8 +646,6 @@ function bindEvents() {
             if (tk && !tk.completed) completeTask(id);
             return;
         }
-
-        // Click on day cell → open add modal
         const day = e.target.closest('.cal-day');
         if (day) {
             selectedDate = day.dataset.date;
@@ -639,9 +653,16 @@ function bindEvents() {
         }
     });
 
-    // Add today task
+    // Today panel
     document.getElementById('addTodayBtn').addEventListener('click', () => {
         openTaskModal(todayStr());
+    });
+
+    document.getElementById('todayTasks').addEventListener('click', e => {
+        const cb  = e.target.closest('.task-cb');
+        const del = e.target.closest('.task-del-btn');
+        if (cb)  completeTask(parseInt(cb.dataset.id));
+        if (del) deleteTask(parseInt(del.dataset.id));
     });
 
     // Task modal
@@ -651,19 +672,11 @@ function bindEvents() {
     });
     document.getElementById('saveTaskBtn').addEventListener('click', saveTask);
     document.getElementById('taskTitleInput').addEventListener('keydown', e => {
-        if (e.key === 'Enter') saveTask();
+        if (e.key === 'Enter')  saveTask();
         if (e.key === 'Escape') closeTaskModal();
     });
 
-    // Today panel (delegated)
-    document.getElementById('todayTasks').addEventListener('click', e => {
-        const cb  = e.target.closest('.task-cb');
-        const del = e.target.closest('.task-del-btn');
-        if (cb)  completeTask(parseInt(cb.dataset.id));
-        if (del) deleteTask(parseInt(del.dataset.id));
-    });
-
-    // Level up close
+    // Level up
     document.getElementById('luClose').addEventListener('click', () => {
         document.getElementById('levelUpModal').hidden = true;
     });
@@ -673,10 +686,9 @@ function bindEvents() {
 }
 
 // ─── INIT ─────────────────────────────────────────────────
-function init() {
-    loadState();
+async function init() {
+    await loadState();
 
-    // Always reset cal view to current month
     const now = new Date();
     state.calView = { year: now.getFullYear(), month: now.getMonth() };
 
@@ -687,12 +699,16 @@ function init() {
     renderToday();
     bindEvents();
 
-    // Tick clock
     tickClock();
     setInterval(tickClock, 1000);
-
-    // Refresh greeting every minute (catches hour change)
     setInterval(refreshGreeting, 60_000);
 }
 
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => {
+    init().catch(err => {
+        console.error('Init failed:', err);
+        document.body.innerHTML = `<div style="padding:2rem;color:#e8420a;font-family:Inter,sans-serif">
+            <h2>Ошибка запуска</h2><pre>${err.message}</pre>
+        </div>`;
+    });
+});
